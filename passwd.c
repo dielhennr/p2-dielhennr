@@ -26,7 +26,9 @@
 #include "sha1.c"
 
 /* Defines the alphanumeric character set: */
-char *alpha_num = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+char *alpha_numeric = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+char *numeric = "0123456789";
+char *alpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /* Pointer to the current valid character set */
 char *valid_chars;
@@ -86,7 +88,6 @@ void uppercase(char *string) {
 }
 
 int main(int argc, char *argv[]) {
-
     if (argc < 3 || argc > 4) {
         printf("Usage: mpirun %s num-chars hash [valid-chars]\n", argv[0]);
         printf("  Options for valid-chars: numeric, alpha, alphanum\n");
@@ -94,13 +95,45 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    /* TODO: We need some sanity checking here... */
+    MPI_Init(&argc, &argv);
+
+    int comm_sz;
+    MPI_Comm_size(MPI_COMM_WORLD, &comm_sz); 
+
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    char hostname[MPI_MAX_PROCESSOR_NAME];
+    int name_sz;
+    MPI_Get_processor_name(hostname, &name_sz);
+
+
+     /* TODO: We need some sanity checking here... */
     int length = atoi(argv[1]);
     char *target = argv[2];
-    valid_chars = alpha_num;
+    char *choice = argv[3];
+    if (strcmp(choice, "alpha") == 0) {
+        valid_chars = alpha;
+    }
+    else if (strcmp(choice, "numeric") == 0){
+        valid_chars = numeric;
+    }
+    /*
+     * defaults to alphanumeric
+     */
+    else{
+        valid_chars = alpha_numeric;
+    }
 
     /* TODO: Print out job information here (valid characters, number of
      * processes, etc). */
+
+    printf("Starting parallel password cracker");
+    printf("Number of processes: %d", comm_sz);
+    printf("Coordinator node: %s", hostname);
+    printf("Valid characters: %s", valid_chars);
+    printf("Target password length: %d", length);
+    printf("Target hash: %s", target);
 
     crack(target, "", length);
 
