@@ -29,7 +29,6 @@
 char *alpha_numeric = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 char *numeric = "0123456789";
 char *alpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
 /* Pointer to the current valid character set */
 char *valid_chars;
 
@@ -56,18 +55,20 @@ bool crack(char *target, char *str, int max_length) {
     char *strcp = calloc(max_length + 1, sizeof(char));
     strcpy(strcp, str);
 
-    int flag = 0;
-    MPI_Status status;
-    MPI_Iprobe(MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &flag, &status);
-    if (flag == 1){
-        MPI_Recv(&found_pw, 128,MPI_CHAR, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
-        return true;
-    }
 
     /* We'll copy the current string and then add the next character to it. So
      * if we start with 'a', then we'll append 'aa', and so on. */
     int i;
     for (i = 0; i < strlen(valid_chars); ++i) {
+
+        int flag = 0;
+        MPI_Iprobe(MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &flag, MPI_STATUS_IGNORE);
+        if (flag == 1){
+            MPI_Recv(&found_pw, 128, MPI_CHAR, MPI_ANY_SOURCE, 0,
+                    MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            return false;
+        }
+        
         strcp[curr_len] = valid_chars[i];
         if (curr_len + 1 < max_length) {
             bool found = crack(target, strcp, max_length);
@@ -80,14 +81,15 @@ bool crack(char *target, char *str, int max_length) {
             sha1sum(hash, strcp);
             inversions++;
             /* TODO: This prints way too often... */
+
             if (inversions % 1000000 == 0 && inversions != 0){
+
                 printf("[%d|%d] %s -> %s\n", rank, inversions, strcp, hash);
                 fflush(stdout);
             }
             if (strcmp(hash, target) == 0) {
                 /* We found a match! */
                 strcpy(found_pw, strcp);
-
                 return true;
             }
         }
@@ -95,6 +97,7 @@ bool crack(char *target, char *str, int max_length) {
     free(strcp);
     return false;
 }
+
 
 /**
  * Modifies a string to only contain uppercase characters.
@@ -169,11 +172,6 @@ int main(int argc, char *argv[]) {
     //how many letters we have to give to last process if division is not natural
     int num_letters_last_rank = num_letters_per + strlen(valid_chars) % comm_sz;
 
-    /* TODO: the 'crack' call above starts with a blank string, and then
-     * proceeds to add characters one by one, in order. To parallelize this, we
-     * need to make each process start with a specific character. Kind of like
-     * the following:
-     */
     int i;
     //Since num_letters_last_rank will be greater than or equal to num_letters
     //Need to make sure to iterate to get every character to the last process.
@@ -182,8 +180,9 @@ int main(int argc, char *argv[]) {
         //add i so that the process will go through every character in its partition.
         char start_str[2];
         if (rank != comm_sz - 1) {
+            //if we aren't last rank, need to skip creating a start string
             if (i >= num_letters_per) {
-                continue;
+               continue; 
             }
             start_str[0] = valid_chars[rank*num_letters_per + i];
             start_str[1] = '\0';
@@ -192,7 +191,9 @@ int main(int argc, char *argv[]) {
             start_str[0] = valid_chars[rank*num_letters_per + i];
             start_str[1] = '\0';
         }
+
         bool found = crack(target, start_str, length);
+        
         if (found) {
             int j;
             for (j = 0; j < comm_sz; ++j) {
@@ -200,14 +201,20 @@ int main(int argc, char *argv[]) {
                     MPI_Send(&found_pw, 128, MPI_CHAR, j, 0, MPI_COMM_WORLD);
                 }
             }
+        }else{
             break;
         }
     }
-
-    if (strlen(found_pw) > 0 && rank == 0) {
-        printf("Recovered password: %s\n", found_pw);
-        fflush(stdout);
+    int global_inversions;
+    MPI_Reduce(&inversions, &global_inversions, 1, MPI_INT, 
+            MPI_SUM, 0, MPI_COMM_WORLD);
+    if (rank == 0){
+        if (strlen(found_pw) > 0) { 
+            printf("Recovered password: %s\n", found_pw);
+        }
+        printf("Total Passwords Hashed: %d\n", global_inversions);
     }
+    
     MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
     return 0;
