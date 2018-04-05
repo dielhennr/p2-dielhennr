@@ -64,16 +64,16 @@ bool crack(char *target, char *str, int max_length) {
         int flag = 0;
         MPI_Iprobe(MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &flag, MPI_STATUS_IGNORE);
         if (flag == 1){
-            MPI_Recv(&found_pw, 128, MPI_CHAR, MPI_ANY_SOURCE, 0,
+            MPI_Recv(found_pw, 128, MPI_CHAR, MPI_ANY_SOURCE, 0,
                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            return false;
+            return true;
         }
         
         strcp[curr_len] = valid_chars[i];
         if (curr_len + 1 < max_length) {
             bool found = crack(target, strcp, max_length);
-            if (found == true) {
-                return true;
+            if (found) {
+                return found;
             }
         } else {
             /* Only check the hash if our string is long enough */
@@ -123,6 +123,8 @@ int main(int argc, char *argv[]) {
     int name_sz;
     MPI_Get_processor_name(hostname, &name_sz);
 
+    double start_time, end_time;
+
     if ((argc < 3 || argc > 4)) {
         if (rank == 0){
             printf("Usage: mpirun %s num-chars hash [valid-chars]\n", argv[0]);
@@ -137,20 +139,19 @@ int main(int argc, char *argv[]) {
      /* TODO: We need some sanity checking here... */
     int length = atoi(argv[1]);
     char *target = argv[2];
-    char *choice = argv[3];
-    if (strcmp(choice, "alpha") == 0) {
-        valid_chars = alpha;
-    }
-    else if (strcmp(choice, "numeric") == 0){
-        valid_chars = numeric;
-    }
-    /*
-     * defaults to alphanumeric
-     */
-    else{
+    if (argc == 4){
+        if (strcmp(argv[3], "alpha") == 0) {
+            valid_chars = alpha;
+        }
+        else if (strcmp(argv[3], "numeric") == 0){
+            valid_chars = numeric;
+        }
+        else{
+            valid_chars = alpha_numeric;
+        }
+    }else{
         valid_chars = alpha_numeric;
     }
-
     /* TODO: Print out job information here (valid characters, number of
      * processes, etc). */
 
@@ -164,9 +165,7 @@ int main(int argc, char *argv[]) {
         printf("Target hash: %s\n", target);
         fflush(stdout);
     }
-
-    MPI_Barrier(MPI_COMM_WORLD);
-    
+    start_time = MPI_Wtime();
     //how many letters we have to give to each process.
     int num_letters_per = strlen(valid_chars) / comm_sz;
     //how many letters we have to give to last process if division is not natural
@@ -182,7 +181,7 @@ int main(int argc, char *argv[]) {
         if (rank != comm_sz - 1) {
             //if we aren't last rank, need to skip creating a start string
             if (i >= num_letters_per) {
-               continue; 
+               break; 
             }
             start_str[0] = valid_chars[rank*num_letters_per + i];
             start_str[1] = '\0';
@@ -198,23 +197,28 @@ int main(int argc, char *argv[]) {
             int j;
             for (j = 0; j < comm_sz; ++j) {
                 if (j != rank){
-                    MPI_Send(&found_pw, 128, MPI_CHAR, j, 0, MPI_COMM_WORLD);
+                    MPI_Send(found_pw, 128, MPI_CHAR, j, 0, MPI_COMM_WORLD);
                 }
             }
-        }else{
-            break;
         }
     }
-    int global_inversions;
-    MPI_Reduce(&inversions, &global_inversions, 1, MPI_INT, 
+
+    int global_sum;
+    MPI_Reduce(&inversions, &global_sum, 1, MPI_INT, 
             MPI_SUM, 0, MPI_COMM_WORLD);
+    end_time = MPI_Wtime();
+    printf("Found: %d %s\n",rank, found_pw);
+    fflush(stdout);
     if (rank == 0){
+        printf("Operation complete!\n");
+        printf("Time elapsed: %.2fs\n", end_time - start_time);
         if (strlen(found_pw) > 0) { 
             printf("Recovered password: %s\n", found_pw);
+            fflush(stdout);
         }
-        printf("Total Passwords Hashed: %d\n", global_inversions);
+        printf("Total Passwords Hashed: %d\n", global_sum);
     }
-    
+
     MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
     return 0;
