@@ -90,6 +90,7 @@ bool crack(char *target, char *str, int max_length) {
             if (strcmp(hash, target) == 0) {
                 /* We found a match! */
                 strcpy(found_pw, strcp);
+                fflush(stdout);
                 return true;
             }
         }
@@ -207,16 +208,15 @@ int main(int argc, char *argv[]) {
     MPI_Reduce(&inversions, &global_sum, 1, MPI_INT, 
             MPI_SUM, 0, MPI_COMM_WORLD);
     end_time = MPI_Wtime();
-    printf("Found: %d %s\n",rank, found_pw);
-    fflush(stdout);
     if (rank == 0){
+        double time = end_time - start_time;
         printf("Operation complete!\n");
-        printf("Time elapsed: %.2fs\n", end_time - start_time);
+        printf("Time elapsed: %.2fs\n", time);
         if (strlen(found_pw) > 0) { 
             printf("Recovered password: %s\n", found_pw);
             fflush(stdout);
         }
-        printf("Total Passwords Hashed: %d\n", global_sum);
+        printf("Total Passwords Hashed: %d (%.2f/s)\n", global_sum, global_sum / time);
     }
 
     MPI_Barrier(MPI_COMM_WORLD);
