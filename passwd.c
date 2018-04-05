@@ -25,6 +25,8 @@
 /* Provides SHA-1 functions: */
 #include "sha1.c"
 
+#define HASH_LENGTH 50
+
 /* Defines the alphanumeric character set: */
 char *alpha_numeric = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 char *numeric = "0123456789";
@@ -112,19 +114,18 @@ void uppercase(char *string) {
 
 int main(int argc, char *argv[]) {
 
-    MPI_Init(&argc, &argv);
 
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-    int comm_sz;
-    MPI_Comm_size(MPI_COMM_WORLD, &comm_sz); 
-
-
+    int comm_sz,  name_sz, length;
+    double start_time, end_time;
+    char target[HASH_LENGTH];
     char hostname[MPI_MAX_PROCESSOR_NAME];
-    int name_sz;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &comm_sz); 
     MPI_Get_processor_name(hostname, &name_sz);
 
-    double start_time, end_time;
+    MPI_Request send_request;
 
     if ((argc < 3 || argc > 4)) {
         if (rank == 0){
@@ -136,10 +137,10 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
+    length = atoi(argv[1]);
+    strcpy(target, argv[2]);
+    uppercase(target);
 
-     /* TODO: We need some sanity checking here... */
-    int length = atoi(argv[1]);
-    char *target = argv[2];
     if (argc == 4){
         if (strcmp(argv[3], "alpha") == 0) {
             valid_chars = alpha;
@@ -153,10 +154,7 @@ int main(int argc, char *argv[]) {
     }else{
         valid_chars = alpha_numeric;
     }
-    /* TODO: Print out job information here (valid characters, number of
-     * processes, etc). */
 
-    uppercase(target);
     if (rank == 0){
         printf("Starting parallel password cracker\n");
         printf("Number of processes: %d\n", comm_sz);
@@ -166,6 +164,7 @@ int main(int argc, char *argv[]) {
         printf("Target hash: %s\n", target);
         fflush(stdout);
     }
+
     start_time = MPI_Wtime();
     //how many letters we have to give to each process.
     int num_letters_per = strlen(valid_chars) / comm_sz;
@@ -198,7 +197,7 @@ int main(int argc, char *argv[]) {
             int j;
             for (j = 0; j < comm_sz; ++j) {
                 if (j != rank){
-                    MPI_Send(found_pw, 128, MPI_CHAR, j, 0, MPI_COMM_WORLD);
+                    MPI_Isend(found_pw, 128, MPI_CHAR, j, 0, MPI_COMM_WORLD, &send_request);
                 }
             }
         }
@@ -219,7 +218,6 @@ int main(int argc, char *argv[]) {
         printf("Total Passwords Hashed: %d (%.2f/s)\n", global_sum, global_sum / time);
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
     return 0;
 }
