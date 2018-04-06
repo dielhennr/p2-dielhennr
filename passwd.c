@@ -41,9 +41,6 @@ int inversions = 0;
 
 int rank;
 
-
-void uppercase(char *string);
-
 /**
  * Generates passwords in order (brute-force) and checks them against a
  * specified target hash.
@@ -61,11 +58,13 @@ bool crack(char *target, char *str, int max_length) {
     /* We'll copy the current string and then add the next character to it. So
      * if we start with 'a', then we'll append 'aa', and so on. */
     int i;
+    int flag = 0;
     for (i = 0; i < strlen(valid_chars); ++i) {
 
-        int flag = 0;
         MPI_Iprobe(MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &flag, MPI_STATUS_IGNORE);
         if (flag == 1){
+            printf("Recveied: %s", found_pw);
+            fflush(stdout);
             MPI_Recv(found_pw, 128, MPI_CHAR, MPI_ANY_SOURCE, 0,
                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             return true;
@@ -92,6 +91,7 @@ bool crack(char *target, char *str, int max_length) {
             if (strcmp(hash, target) == 0) {
                 /* We found a match! */
                 strcpy(found_pw, strcp);
+                printf("%s\n", found_pw);
                 fflush(stdout);
                 return true;
             }
@@ -124,8 +124,6 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &comm_sz); 
     MPI_Get_processor_name(hostname, &name_sz);
-
-    MPI_Request send_request;
 
     if ((argc < 3 || argc > 4)) {
         if (rank == 0){
@@ -197,7 +195,8 @@ int main(int argc, char *argv[]) {
             int j;
             for (j = 0; j < comm_sz; ++j) {
                 if (j != rank){
-                    MPI_Isend(found_pw, 128, MPI_CHAR, j, 0, MPI_COMM_WORLD, &send_request);
+                    printf("Sending to %d\n", j);
+                    MPI_Send(found_pw, 128, MPI_CHAR, j, 0, MPI_COMM_WORLD);
                 }
             }
         }
@@ -214,6 +213,8 @@ int main(int argc, char *argv[]) {
         if (strlen(found_pw) > 0) { 
             printf("Recovered password: %s\n", found_pw);
             fflush(stdout);
+        }else {
+            printf("Failed to recover password\n");
         }
         printf("Total Passwords Hashed: %d (%.2f/s)\n", global_sum, global_sum / time);
     }
