@@ -10,7 +10,25 @@ Edit this README.md file to answer the following questions:
 
 Choose five entries from the password database and recover the passwords. List the username + password combinations here, along with the run time of your program and the number of hashes computed per second.
 
-(fill in entries here)
+Using 52 cores
+##1
+
+User: aditya
+
+Password: Hello 
+
+Num Hashes: 26954161 (4789860.83/s)
+
+##2
+User: liu
+
+Password: Meow
+
+Num Hashes: 972064 (3755112.27/s)
+
+##3
+User:
+
 
 ### Performance Benchmarking (1 pts)
 
