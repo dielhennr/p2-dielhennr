@@ -80,7 +80,6 @@ bool crack(char *target, char *str, int max_length) {
             char hash[41];
             sha1sum(hash, strcp);
             inversions++;
-            /* TODO: This prints way too often... */
 
             if (inversions % 1000000 == 0 && inversions != 0){
 
@@ -130,12 +129,21 @@ int main(int argc, char *argv[]) {
             printf("  (defaults to 'alphanum')\n");
         }
         MPI_Finalize();
-        return 0;
+        return EXIT_FAILURE;
     }
 
     length = atoi(argv[1]);
     strcpy(target, argv[2]);
     uppercase(target);
+
+    if (length <= 0 || strlen(target) != 40) {
+        if (rank == 0){
+            printf("  Password length must be positive.");
+            printf("  Length of hash must be 40.");
+        }
+        MPI_Finalize();
+        return EXIT_FAILURE;
+    }
 
     if (argc == 4){
         if (strcmp(argv[3], "alpha") == 0) {
@@ -155,7 +163,7 @@ int main(int argc, char *argv[]) {
         printf("Starting parallel password cracker\n");
         printf("Number of processes: %d\n", comm_sz);
         printf("Coordinator node: %s\n", hostname);
-        printf("Valid characters: %s\n", valid_chars);
+        printf("Valid characters: %s (%d)\n", valid_chars, strlen(valid_chars));
         printf("Target password length: %d\n", length);
         printf("Target hash: %s\n", target);
         fflush(stdout);
