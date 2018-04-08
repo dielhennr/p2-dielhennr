@@ -37,7 +37,7 @@ char *valid_chars;
 /* When the password is found, we'll store it here: */
 char found_pw[128] = { 0 };
 
-int inversions = 0;
+unsigned long inversions = 0;
 
 int rank;
 
@@ -63,7 +63,6 @@ bool crack(char *target, char *str, int max_length) {
 
         MPI_Iprobe(MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &flag, MPI_STATUS_IGNORE);
         if (flag == 1){
-            printf("Recveied: %s", found_pw);
             fflush(stdout);
             MPI_Recv(found_pw, 128, MPI_CHAR, MPI_ANY_SOURCE, 0,
                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -85,13 +84,12 @@ bool crack(char *target, char *str, int max_length) {
 
             if (inversions % 1000000 == 0 && inversions != 0){
 
-                printf("[%d|%d] %s -> %s\n", rank, inversions, strcp, hash);
+                printf("[%d|%lu] %s -> %s\n", rank, inversions, strcp, hash);
                 fflush(stdout);
             }
             if (strcmp(hash, target) == 0) {
                 /* We found a match! */
                 strcpy(found_pw, strcp);
-                printf("%s\n", found_pw);
                 fflush(stdout);
                 return true;
             }
@@ -165,9 +163,26 @@ int main(int argc, char *argv[]) {
 
     start_time = MPI_Wtime();
     //how many letters we have to give to each process.
-    int num_letters_per = strlen(valid_chars) / comm_sz;
-    //how many letters we have to give to last process if division is not natural
-    int num_letters_last_rank = num_letters_per + strlen(valid_chars) % comm_sz;
+    int num_letters_per;
+    int num_letters_last_rank;
+
+    //if character set is smaller than the number of cores runnning
+    if (comm_sz > strlen(valid_chars)) {
+
+        num_letters_per = 1;
+
+        num_letters_last_rank = 1;
+        
+        
+    }else{
+        /**
+         * character set / number of cores gives the number of characters each process
+         * should get.
+         */
+        num_letters_per = strlen(valid_chars) / comm_sz;
+        //how many letters we have to give to last process if division is not natural
+        num_letters_last_rank = num_letters_per + strlen(valid_chars) % comm_sz;
+    }
 
     int i;
     //Since num_letters_last_rank will be greater than or equal to num_letters
@@ -175,19 +190,58 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < num_letters_last_rank; ++i) {
         //rank*num_letters gives start index of the partition in the character set.
         //add i so that the process will go through every character in its partition.
-        char start_str[2];
-        if (rank != comm_sz - 1) {
-            //if we aren't last rank, need to skip creating a start string
-            if (i >= num_letters_per) {
-               break; 
+        char start_str[3];
+
+        if (comm_sz <= strlen(valid_chars)){
+            if (rank != comm_sz - 1) {
+                //if we aren't last rank, need to skip creating a start string
+                if (i >= num_letters_per) {
+                    break; 
+                }
+                start_str[0] = valid_chars[rank*num_letters_per + i];
+                start_str[1] = '\0';
             }
-            start_str[0] = valid_chars[rank*num_letters_per + i];
-            start_str[1] = '\0';
-        }else{
-            //if we are the last rank we potentially have a larger partition
-            start_str[0] = valid_chars[rank*num_letters_per + i];
-            start_str[1] = '\0';
+            else {
+                //if we are the last rank we potentially have a larger partition
+                start_str[0] = valid_chars[rank*num_letters_per + i];
+                start_str[1] = '\0';
+            }   
+        }else/*else the character set is less than the number of cores we have*/{
+
+            /**
+             * if the rank is less than number of characters in the set, we just start 
+             * that core with the character at the index of this cores rank
+             */
+            if (rank < strlen(valid_chars)){
+                start_str[0] = valid_chars[rank*num_letters_per + i];
+                start_str[1] = '\0';
+            }
+            /**
+             * Otherwise that core will start with 2 characters instead of 1.
+             * The first character will be repeated again but the second character will be
+             * different.Consider running 12 cores on a numeric character set. 
+             * 10 cores will start with a single number (0-9). The 1th core should start
+             * with 01 and the 12th core should start with 11. This is because the first
+             * core will go into crack and the first number added to it will be 0 so it
+             * will look like 00. The second core will look like 10. We want to be able to
+             * run additional permutations in parallel.
+             *
+             * rank % strlen(valid_chars) will essentially resart us to the begining of
+             * the character set every time we add new permutations
+             *
+             * rank/strlen(valid_chars) will give us which character to add to create the
+             * permutation. consider rank 53 on the alpha set. 53%52 = 1 so we will start 
+             * rank 53 with the string ab.
+             */
+            else {
+                start_str[0] = valid_chars[rank%strlen(valid_chars)];
+                start_str[1] = valid_chars[(rank / strlen(valid_chars))];
+                start_str[2] = '\0';
+            }
+
         }
+
+        printf("Rank: %d Starting with: %s\n", rank, start_str);
 
         bool found = crack(target, start_str, length);
         
@@ -195,15 +249,14 @@ int main(int argc, char *argv[]) {
             int j;
             for (j = 0; j < comm_sz; ++j) {
                 if (j != rank){
-                    printf("Sending to %d\n", j);
                     MPI_Send(found_pw, 128, MPI_CHAR, j, 0, MPI_COMM_WORLD);
                 }
             }
         }
     }
 
-    int global_sum;
-    MPI_Reduce(&inversions, &global_sum, 1, MPI_INT, 
+    unsigned long global_sum;
+    MPI_Reduce(&inversions, &global_sum, 1, MPI_UNSIGNED_LONG, 
             MPI_SUM, 0, MPI_COMM_WORLD);
     end_time = MPI_Wtime();
     if (rank == 0){
@@ -216,7 +269,7 @@ int main(int argc, char *argv[]) {
         }else {
             printf("Failed to recover password\n");
         }
-        printf("Total Passwords Hashed: %d (%.2f/s)\n", global_sum, global_sum / time);
+        printf("Total Passwords Hashed: %lu (%.2f/s)\n", global_sum, global_sum / time);
     }
 
     MPI_Finalize();
