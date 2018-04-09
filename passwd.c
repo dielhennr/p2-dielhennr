@@ -68,8 +68,23 @@ bool crack(char *target, char *str, int max_length) {
                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             return true;
         }
-        
-        strcp[curr_len] = valid_chars[i];
+
+        /*
+         * If we have more ranks than processes we want to start the second character
+         * halfway through the character set and increment up it. This way if we run 2
+         * cores on the same start string they should each finish half of the permutations
+         * 
+         */
+        if (rank >= strlen(valid_chars) && curr_len == 1){
+            if (i < strlen(valid_chars)/2){
+                strcp[curr_len] = valid_chars[(strlen(valid_chars)/2) + i];
+            }else{
+                break;
+            }
+
+        }else{
+            strcp[curr_len] = valid_chars[i];
+        }
         if (curr_len + 1 < max_length) {
             bool found = crack(target, strcp, max_length);
             if (found) {
@@ -89,6 +104,7 @@ bool crack(char *target, char *str, int max_length) {
             if (strcmp(hash, target) == 0) {
                 /* We found a match! */
                 strcpy(found_pw, strcp);
+                printf("Found: %s", found_pw);
                 fflush(stdout);
                 return true;
             }
@@ -214,7 +230,7 @@ int main(int argc, char *argv[]) {
                 start_str[0] = valid_chars[rank*num_letters_per + i];
                 start_str[1] = '\0';
             }   
-        }else/*else the character set is less than the number of cores we have*/{
+        }else if (comm_sz <= strlen(valid_chars)*2){
 
             /**
              * if the rank is less than number of characters in the set, we just start 
@@ -225,31 +241,18 @@ int main(int argc, char *argv[]) {
                 start_str[1] = '\0';
             }
             /**
-             * Otherwise that core will start with 2 characters instead of 1.
-             * The first character will be repeated again but the second character will be
-             * different.Consider running 12 cores on a numeric character set. 
-             * 10 cores will start with a single number (0-9). The 1th core should start
-             * with 01 and the 12th core should start with 11. This is because the first
-             * core will go into crack and the first number added to it will be 0 so it
-             * will look like 00. The second core will look like 10. We want to be able to
-             * run additional permutations in parallel.
-             *
-             * rank % strlen(valid_chars) will essentially resart us to the begining of
-             * the character set every time we add new permutations
-             *
-             * rank/strlen(valid_chars) will give us which character to add to create the
-             * permutation. consider rank 53 on the alpha set. 53%52 = 1 so we will start 
-             * rank 53 with the string ab.
+             * Otherwise we reset the character set by modding the rank with the length of
+             * the set. This ranks second character will start the character halfway
+             * across the character set since a lower rank started the second character at
+             * the beginning of the set. This is done within the crack function. This
+             * allows us to double the amount of cores we can use.
              */
             else {
                 start_str[0] = valid_chars[rank%strlen(valid_chars)];
-                start_str[1] = valid_chars[(rank / strlen(valid_chars))];
-                start_str[2] = '\0';
+                start_str[1] = '\0';
             }
 
         }
-
-        printf("Rank: %d Starting with: %s\n", rank, start_str);
 
         bool found = crack(target, start_str, length);
         
@@ -262,7 +265,8 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-
+    
+    MPI_Barrier(MPI_COMM_WORLD);
     unsigned long global_sum;
     MPI_Reduce(&inversions, &global_sum, 1, MPI_UNSIGNED_LONG, 
             MPI_SUM, 0, MPI_COMM_WORLD);
