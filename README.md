@@ -91,7 +91,7 @@ Number of hashes: 1555336554 (452428.58/s)
 
 Number of hashes: 3027910055 (934939.12/s)  
 
-It makes sense that 4 cores and 8 cores took the same amount of time both rank 0's get start string a. No ranks get start string b and the password is banana. The same will be true with 16 cores and 32 cores so I won't test them for the sake of time. Lets try 64 cores. It should be faster since rank 1 will get start string b, and the password is bannana, so it will find it faster. The extra 12 cores starting with a 2 character start string, will not help in finding it faster (for this specific password).
+It makes sense that 4 cores and 8 cores took the same amount of time both rank 0's get start string a. No ranks get start string b and the password is banana. The same will be true with 16 cores and 32 cores so I won't test them for the sake of time. Lets try 64 cores. It should be faster since rank 1 will get start string b, and the password is bannana, so it will find it faster. The extra 12 cores starting with a different second character will not help in finding it faster (for this specific password).
 
 64 cores
 
@@ -103,4 +103,4 @@ Number of hashes: 121639100 (6136284.76/s)
 
 Brute-forcing passwords can take some time. What might be a better approach?  On the other hand, what is one guarantee our algorithm can provide that others may not be able to?
 
-There are a lot of better approaches but the best is definitley just mass email scamming (eg nigerian prince) for information.
+There are a lot of better approaches but the best is definitley just mass email scamming (eg nigerian prince) for information. Dictionary attack seems pretty cool as well and probably more efficient than brute force since most peoples passwords are probably some readable language with random numbers thrown in. The gaurantee that brute forcing gives is that it will find the password no matter what (even though it might take a while). Even if the password is gibberish and unreadable. The pitfall of a dictionary attack would be that some specific permutation is not in the dictionary.
