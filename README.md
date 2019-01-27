@@ -1,3 +1,5 @@
+# Code Written in Spring 2018
+
 # Project 2: Distributed Password Cracker
 
 See Project Spec here: https://www.cs.usfca.edu/~mmalensek/cs220/assignments/project-2.html
